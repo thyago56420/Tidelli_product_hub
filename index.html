@@ -57,6 +57,10 @@
 <!-- Main App -->
 <script type="text/babel">
 
+// Bridge: expose MOCK_DATA into this Babel script scope
+const MOCK_DATA = window.MOCK_DATA;
+const STATUS_CONFIG = window.STATUS_CONFIG;
+
 const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
   "accentColor": "oklch(42% 0.12 200)",
   "sidebarColor": "oklch(96% 0.008 60)",
