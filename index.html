@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tidelli Product Hub & Finishes</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body, #root { height: 100%; }
+    body {
+      background: oklch(97.5% 0.008 60);
+      font-family: 'DM Sans', sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: oklch(80% 0.015 60); border-radius: 3px; }
+    select { appearance: auto; }
+    table { border-collapse: collapse; }
+    input[type=number]::-webkit-inner-spin-button { opacity: 1; }
+    button:focus-visible { outline: 2px solid oklch(55% 0.10 45); outline-offset: 2px; }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+
+<!-- Firebase removed — app runs on localStorage + MOCK_DATA fallback -->
+
+<!-- Data layer -->
+<script src="data/tidelli-data.js"></script>
+<script src="data/ropes-real.js"></script>
+<script type="text/babel" src="data/mockData.js"></script>
+<!-- Excel parser (SheetJS) -->
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<!-- Shared components -->
+<script type="text/babel" src="components/TopBar.jsx"></script>
+<script type="text/babel" src="components/Sidebar.jsx"></script>
+<!-- Screens -->
+<script type="text/babel" src="components/LoginScreen.jsx"></script>
+<script type="text/babel" src="components/DashboardScreen.jsx"></script>
+<script type="text/babel" src="components/CatalogScreen.jsx"></script>
+<script type="text/babel" src="components/FinishLibraryScreen.jsx"></script>
+<script type="text/babel" src="components/MaterialInventoryScreen.jsx"></script>
+<script type="text/babel" src="components/StoreManagementScreen.jsx"></script>
+<script type="text/babel" src="components/StoreInventoryScreen.jsx"></script>
+<!-- Image slots -->
+<script src="image-slot.js"></script>
+<!-- Tweaks panel -->
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+
+<!-- Main App -->
+<script type="text/babel">
+
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "accentColor": "oklch(42% 0.12 200)",
+  "sidebarColor": "oklch(96% 0.008 60)",
+  "cardRadius": 4,
+  "fontScale": 1,
+  "showProductImages": true,
+  "defaultLang": "en"
+}/*EDITMODE-END*/;
+
+const App = () => {
+  const [tweaks, setTweak] = useTweaks(TWEAK_DEFAULTS);
+
+  // Clear stale product data on load (new Excel source)
+  React.useEffect(() => {
+    try {
+      localStorage.removeItem('customProducts');
+      localStorage.removeItem('deletedProductIds');
+      localStorage.removeItem('productEditOverrides');
+      localStorage.removeItem('productStatusOverrides');
+      localStorage.removeItem('productFinishOverrides');
+    } catch (e) {}
+  }, []);
+
+  const [lang, setLang] = React.useState(TWEAK_DEFAULTS.defaultLang || 'en');
+  const [loggedIn, setLoggedIn] = React.useState(false);
+  const [authChecked, setAuthChecked] = React.useState(false);
+  const [dataLoaded, setDataLoaded] = React.useState(false);
+  const [currentUser, setCurrentUser] = React.useState(null);
+  const [currentRole, setCurrentRole] = React.useState('super_admin');
+  const [currentScreen, setCurrentScreen] = React.useState('dashboard');
+  const [prevScreen, setPrevScreen] = React.useState(null);
+
+  // ── Load Excel product data ───────────────────────────────────────
+  React.useEffect(() => {
+    if (window.LOAD_EXCEL_PRODUCTS) {
+      window.LOAD_EXCEL_PRODUCTS().then(() => setDataLoaded(true));
+    } else {
+      setDataLoaded(true);
+    }
+  }, []);
+
+  // ── Firebase connection status ───────────────────────────────────
+  const [fbStatus, setFbStatus] = React.useState('checking'); // 'checking' | 'connected' | 'offline'
+
+  React.useEffect(() => {
+    if (!window.db) { setFbStatus('offline'); return; }
+    // Try enabling network first, then ping with a known public collection
+    window.db.enableNetwork()
+      .then(() => window.db.collection('storeInventories').limit(1).get())
+      .then(() => setFbStatus('connected'))
+      .catch((err) => {
+        // Permission denied means Firebase IS reachable — rules just block anonymous reads
+        if (err.code === 'permission-denied' || err.code === 'unauthenticated') {
+          setFbStatus('connected');
+        } else {
+          setFbStatus('offline');
+        }
+      });
+  }, []);
+  React.useEffect(() => {
+    if (!window.fbAuth) { setAuthChecked(true); return; }
+    const unsub = window.fbAuth.onAuthStateChanged(async (firebaseUser) => {
+      if (firebaseUser) {
+        // Try to load user profile from Firestore
+        let profile = null;
+        try {
+          const doc = await window.db.collection('users').doc(firebaseUser.uid).get();
+          if (doc.exists) profile = doc.data();
+        } catch {}
+        // Fall back to MOCK_DATA lookup by email
+        if (!profile) {
+          profile = MOCK_DATA.users.find(u => u.email === firebaseUser.email) || {
+            id: firebaseUser.uid,
+            name: firebaseUser.displayName || firebaseUser.email,
+            email: firebaseUser.email,
+            role: 'store_user',
+            store: 'Unknown',
+            avatar: (firebaseUser.email || 'U')[0].toUpperCase(),
+          };
+        }
+        setCurrentUser(profile);
+        setCurrentRole(profile.role || 'store_user');
+        setLoggedIn(true);
+      } else {
+        setCurrentUser(null);
+        setLoggedIn(false);
+      }
+      setAuthChecked(true);
+    });
+    return () => unsub();
+  }, []);
+
+  // ── Firestore real-time listener: store inventories ─────────────
+  React.useEffect(() => {
+    if (!window.db) return;
+    const unsub = window.db.collection('storeInventories')
+      .orderBy('updatedAt', 'desc')
+      .onSnapshot(snap => {
+        const lists = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        setInventories(lists);
+        // Also cache locally
+        try { localStorage.setItem('storeInventories', JSON.stringify(lists)); } catch {}
+      }, () => {
+        // Firestore unavailable — fall back to localStorage
+      });
+    return () => unsub();
+  }, []);
+  // Finishes as React state — the single source of truth for qty/stock across all screens
+  // Merges base data with persisted overrides and any custom-added finishes
+  const [finishes, setFinishes] = React.useState(() => {
+    const base = MOCK_DATA.finishes.map(f => ({ ...f }));
+    let overrides = {};
+    let custom = [];
+    let deleted = [];
+    try { overrides = JSON.parse(localStorage.getItem('finishOverrides') || '{}'); } catch {}
+    try { custom = JSON.parse(localStorage.getItem('customFinishes') || '[]'); } catch {}
+    try { deleted = JSON.parse(localStorage.getItem('deletedFinishIds') || '[]'); } catch {}
+    const deletedSet = new Set(deleted);
+    const merged = base
+      .filter(f => !deletedSet.has(f.id))
+      .map(f => overrides[f.id] ? { ...f, ...overrides[f.id] } : f);
+    const customKept = custom.filter(f => !deletedSet.has(f.id));
+    return [...merged, ...customKept];
+  });
+
+  // Called by MaterialInventoryScreen on save — updates state, persists, and syncs MOCK_DATA
+  const handleUpdateFinish = React.useCallback((id, updates) => {
+    setFinishes(prev => {
+      const next = prev.map(f => f.id === id ? { ...f, ...updates } : f);
+      MOCK_DATA.finishes = next;
+      // Persist overrides for base finishes
+      try {
+        const overrides = JSON.parse(localStorage.getItem('finishOverrides') || '{}');
+        overrides[id] = { ...(overrides[id] || {}), ...updates };
+        localStorage.setItem('finishOverrides', JSON.stringify(overrides));
+      } catch {}
+      // If this is a custom finish, also update its persisted record
+      try {
+        const custom = JSON.parse(localStorage.getItem('customFinishes') || '[]');
+        const cIdx = custom.findIndex(f => f.id === id);
+        if (cIdx >= 0) {
+          custom[cIdx] = { ...custom[cIdx], ...updates };
+          localStorage.setItem('customFinishes', JSON.stringify(custom));
+        }
+      } catch {}
+      return next;
+    });
+  }, []);
+
+  // Called by MaterialInventoryScreen on import — adds a brand-new finish
+  const handleAddFinish = React.useCallback((finish) => {
+    setFinishes(prev => {
+      const next = [...prev, finish];
+      MOCK_DATA.finishes = next;
+      try {
+        const custom = JSON.parse(localStorage.getItem('customFinishes') || '[]');
+        custom.push(finish);
+        localStorage.setItem('customFinishes', JSON.stringify(custom));
+      } catch {}
+      return next;
+    });
+  }, []);
+
+  // Called by MaterialInventoryScreen on delete
+  const handleDeleteFinish = React.useCallback((id) => {
+    setFinishes(prev => {
+      const next = prev.filter(f => f.id !== id);
+      MOCK_DATA.finishes = next;
+      // Track in deletedFinishIds for base finishes; remove from customFinishes if applicable
+      try {
+        const deleted = JSON.parse(localStorage.getItem('deletedFinishIds') || '[]');
+        if (!deleted.includes(id)) {
+          deleted.push(id);
+          localStorage.setItem('deletedFinishIds', JSON.stringify(deleted));
+        }
+      } catch {}
+      try {
+        const custom = JSON.parse(localStorage.getItem('customFinishes') || '[]');
+        const filtered = custom.filter(f => f.id !== id);
+        if (filtered.length !== custom.length) {
+          localStorage.setItem('customFinishes', JSON.stringify(filtered));
+        }
+      } catch {}
+      // Also clean up any override entry
+      try {
+        const overrides = JSON.parse(localStorage.getItem('finishOverrides') || '{}');
+        if (overrides[id]) {
+          delete overrides[id];
+          localStorage.setItem('finishOverrides', JSON.stringify(overrides));
+        }
+      } catch {}
+      return next;
+    });
+  }, []);
+
+  // Persisted product finish-type overrides: { [productId]: { [type]: true|false } }
+  const [productFinishOverrides, setProductFinishOverrides] = React.useState(() => {
+    try { return JSON.parse(localStorage.getItem('productFinishOverrides') || '{}'); } catch { return {}; }
+  });
+
+  // Persisted product status overrides: { [productId]: statusString }
+  const [productStatusOverrides, setProductStatusOverrides] = React.useState(() => {
+    try { return JSON.parse(localStorage.getItem('productStatusOverrides') || '{}'); } catch { return {}; }
+  });
+
+  const [sidebarCollapsed, setSidebarCollapsed] = React.useState(() => {
+    try { return JSON.parse(localStorage.getItem('sidebarCollapsed') || 'false'); } catch { return false; }
+  });
+  const toggleSidebar = () => setSidebarCollapsed(prev => {
+    const next = !prev;
+    localStorage.setItem('sidebarCollapsed', JSON.stringify(next));
+    return next;
+  });
+
+  // Persisted store inventory lists
+  const [inventories, setInventories] = React.useState(() => {
+    try { return JSON.parse(localStorage.getItem('storeInventories') || '[]'); } catch { return []; }
+  });
+
+  const handleSaveInventoryList = React.useCallback((list) => {
+    if (window.db) {
+      const { id, ...data } = list;
+      window.db.collection('storeInventories').doc(id).set(data)
+        .catch(() => {});
+    }
+    // Optimistic local update (Firestore onSnapshot will confirm)
+    setInventories(prev => {
+      const idx = prev.findIndex(l => l.id === list.id);
+      const next = idx >= 0 ? prev.map(l => l.id === list.id ? list : l) : [...prev, list];
+      try { localStorage.setItem('storeInventories', JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }, []);
+
+  const handleDeleteInventoryList = React.useCallback((id) => {
+    if (window.db) {
+      window.db.collection('storeInventories').doc(id).delete().catch(() => {});
+    }
+    setInventories(prev => {
+      const next = prev.filter(l => l.id !== id);
+      try { localStorage.setItem('storeInventories', JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }, []);
+
+  // Persisted custom products added by admins: Product[]
+  const [customProducts, setCustomProducts] = React.useState(() => {
+    try { return JSON.parse(localStorage.getItem('customProducts') || '[]'); } catch { return []; }
+  });
+
+  // Override a product's status (e.g. restore from discontinued)
+  const handleStatusOverride = React.useCallback((productId, newStatus) => {
+    setProductStatusOverrides(prev => {
+      const next = { ...prev, [productId]: newStatus };
+      localStorage.setItem('productStatusOverrides', JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  // Add a new custom product
+  const handleAddProduct = React.useCallback((product) => {
+    setCustomProducts(prev => {
+      const next = [...prev, product];
+      try { localStorage.setItem('customProducts', JSON.stringify(next)); } catch (e) { console.warn('localStorage quota exceeded, product added in-memory only'); }
+      return next;
+    });
+  }, []);
+
+  // Edit an existing product (updates MOCK_DATA in-place + persists overrides)
+  const [productEditOverrides, setProductEditOverrides] = React.useState(() => {
+    try { return JSON.parse(localStorage.getItem('productEditOverrides') || '{}'); } catch { return {}; }
+  });
+  const handleEditProduct = React.useCallback((productId, updates) => {
+    setProductEditOverrides(prev => {
+      const next = { ...prev, [productId]: { ...(prev[productId] || {}), ...updates } };
+      localStorage.setItem('productEditOverrides', JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  // Deleted product IDs (hides them from catalog)
+  const [deletedProductIds, setDeletedProductIds] = React.useState(() => {
+    try { return JSON.parse(localStorage.getItem('deletedProductIds') || '[]'); } catch { return []; }
+  });
+
+  const handleDeleteProducts = React.useCallback((ids) => {
+    setDeletedProductIds(prev => {
+      const next = [...new Set([...prev, ...ids])];
+      localStorage.setItem('deletedProductIds', JSON.stringify(next));
+      return next;
+    });
+    // Also remove from customProducts if any
+    setCustomProducts(prev => {
+      const idSet = new Set(ids);
+      const next = prev.filter(p => !idSet.has(p.id));
+      localStorage.setItem('customProducts', JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  const handleDeleteAllProducts = React.useCallback(() => {
+    // Mark all current MOCK_DATA products as deleted + clear custom products
+    const allIds = MOCK_DATA.products.map(p => p.id);
+    setDeletedProductIds(prev => {
+      const next = [...new Set([...prev, ...allIds])];
+      localStorage.setItem('deletedProductIds', JSON.stringify(next));
+      return next;
+    });
+    setCustomProducts([]);
+    localStorage.setItem('customProducts', '[]');
+  }, []);
+
+  // Called by MaterialInventoryScreen on save — updates state AND keeps MOCK_DATA in sync
+  const t = MOCK_DATA.translations[lang];
+
+  const handleLogin = (user) => {
+    setCurrentUser(user);
+    setCurrentRole(user.role);
+    setLoggedIn(true);
+    setCurrentScreen('dashboard');
+  };
+
+  const handleLogout = () => {
+    if (window.fbAuth) window.fbAuth.signOut().catch(() => {});
+    setLoggedIn(false);
+    setCurrentUser(null);
+    setCurrentScreen('dashboard');
+  };
+
+  const handleNavigate = (screen) => {
+    setPrevScreen(currentScreen);
+    setCurrentScreen(screen);
+  };
+
+  const handleLangToggle = () => {
+    setLang(prev => prev === 'en' ? 'pt' : 'en');
+  };
+
+  const handleRoleChange = (role) => {
+    setCurrentRole(role);
+    // Map role to user
+    const user = MOCK_DATA.users.find(u => u.role === role) || MOCK_DATA.users[0];
+    setCurrentUser(user);
+    // If navigating to admin-only screen from non-admin role, redirect
+    const adminOnly = ['materials', 'stores'];
+    if (adminOnly.includes(currentScreen) && !['admin','super_admin'].includes(role)) {
+      setCurrentScreen('dashboard');
+    }
+  };
+
+  // Not logged in — show login (wait for auth check first)
+  if (!authChecked || !dataLoaded) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: 'oklch(97.5% 0.008 60)', fontFamily: 'DM Sans, sans-serif', color: 'oklch(60% 0.03 55)', fontSize: 14 }}>
+        {!dataLoaded ? 'Loading product catalog…' : 'Loading…'}
+      </div>
+    );
+  }
+
+  if (!loggedIn) {
+    return <LoginScreen onLogin={handleLogin} lang={lang} onLangToggle={handleLangToggle} />;
+  }
+
+  const isAdmin = currentRole === 'admin' || currentRole === 'super_admin';
+
+  const renderScreen = () => {
+    switch (currentScreen) {
+      case 'dashboard':
+        return <DashboardScreen t={t} lang={lang} onNavigate={handleNavigate} currentRole={currentRole} />;
+      case 'catalog':
+        return <CatalogScreen
+          t={t}
+          lang={lang}
+          onNavigate={handleNavigate}
+          currentRole={currentRole}
+          productFinishOverrides={productFinishOverrides}
+          productStatusOverrides={productStatusOverrides}
+          productEditOverrides={productEditOverrides}
+          deletedProductIds={deletedProductIds}
+          onStatusOverride={handleStatusOverride}
+          onEditProduct={handleEditProduct}
+          onDeleteProducts={handleDeleteProducts}
+          onDeleteAllProducts={handleDeleteAllProducts}
+          customProducts={customProducts}
+          onAddProduct={handleAddProduct}
+        />;
+      case 'finishes':
+        return <FinishLibraryScreen t={t} lang={lang} currentRole={currentRole} finishes={finishes} />;
+      case 'materials':
+        return isAdmin
+          ? <MaterialInventoryScreen t={t} lang={lang} finishes={finishes} onUpdateFinish={handleUpdateFinish} onAddFinish={handleAddFinish} onDeleteFinish={handleDeleteFinish} />
+          : <div style={{ padding: 60, textAlign: 'center', fontFamily: 'DM Sans, sans-serif', color: 'oklch(55% 0.03 55)' }}>Access restricted to Admin roles.</div>;
+      case 'inventories':
+        return <StoreInventoryScreen
+          lang={lang}
+          currentRole={currentRole}
+          currentUser={currentUser || MOCK_DATA.users[0]}
+          allProducts={[...MOCK_DATA.products, ...customProducts]}
+          finishes={finishes}
+          inventories={inventories}
+          onSaveList={handleSaveInventoryList}
+          onDeleteList={handleDeleteInventoryList}
+        />;
+      case 'stores':
+        return isAdmin
+          ? <StoreManagementScreen t={t} lang={lang} />
+          : <div style={{ padding: 60, textAlign: 'center', fontFamily: 'DM Sans, sans-serif', color: 'oklch(55% 0.03 55)' }}>Access restricted to Admin roles.</div>;
+      default:
+        return <DashboardScreen t={t} lang={lang} onNavigate={handleNavigate} currentRole={currentRole} />;
+    }
+  };
+
+  return (
+    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
+      {/* Sidebar */}
+      <Sidebar
+        currentScreen={currentScreen}
+        onNavigate={handleNavigate}
+        currentRole={currentRole}
+        lang={lang}
+        t={t}
+        sidebarColor={tweaks.sidebarColor}
+        collapsed={sidebarCollapsed}
+        onToggleCollapse={toggleSidebar}
+        fbStatus={fbStatus}
+      />
+
+      {/* Main area */}
+      <div style={{
+        flex: 1,
+        marginLeft: sidebarCollapsed ? 60 : 220,
+        display: 'flex',
+        flexDirection: 'column',
+        minWidth: 0,
+        height: '100vh',
+        overflow: 'hidden',
+        transition: 'margin-left 0.22s ease',
+      }}>
+        {/* Top bar */}
+        <TopBar
+          t={t}
+          lang={lang}
+          onLangToggle={handleLangToggle}
+          currentRole={currentRole}
+          onRoleChange={handleRoleChange}
+          currentUser={currentUser || MOCK_DATA.users[0]}
+          onLogout={handleLogout}
+        />
+
+        {/* Screen content */}
+        <main style={{
+          flex: 1,
+          overflowY: 'auto',
+          background: 'oklch(97.5% 0.008 60)',
+        }}>
+          {renderScreen()}
+        </main>
+      </div>
+
+      {/* Tweaks Panel */}
+      <TweaksPanel>
+        <TweakSection label="Brand Colors" />
+        <TweakColor
+          label="Accent Color"
+          value={tweaks.accentColor}
+          options={['oklch(45% 0.10 45)', 'oklch(42% 0.12 200)', 'oklch(40% 0.10 330)', 'oklch(38% 0.08 140)']}
+          onChange={v => setTweak('accentColor', v)}
+        />
+        <TweakColor
+          label="Sidebar"
+          value={tweaks.sidebarColor}
+          options={['oklch(22% 0.03 55)', 'oklch(18% 0.02 220)', 'oklch(16% 0.02 0)', 'oklch(96% 0.008 60)']}
+          onChange={v => setTweak('sidebarColor', v)}
+        />
+        <TweakSection label="Layout" />
+        <TweakSlider label="Card Radius" value={tweaks.cardRadius} min={0} max={24} step={2} onChange={v => setTweak('cardRadius', v)} />
+        <TweakSlider label="Font Scale" value={tweaks.fontScale} min={0.85} max={1.2} step={0.05} onChange={v => setTweak('fontScale', v)} />
+        <TweakSection label="Interface" />
+        <TweakToggle label="Show Product Images" value={tweaks.showProductImages} onChange={v => setTweak('showProductImages', v)} />
+        <TweakRadio
+          label="Default Language"
+          value={tweaks.defaultLang}
+          options={['en', 'pt']}
+          onChange={v => setTweak('defaultLang', v)}
+        />
+      </TweaksPanel>
+    </div>
+  );
+};
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

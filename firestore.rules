@@ -1,0 +1,113 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helper functions ────────────────────────────────────────────
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function userRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && userRole() in ['admin', 'super_admin'];
+    }
+
+    function isSuperAdmin() {
+      return isSignedIn() && userRole() == 'super_admin';
+    }
+
+    function userStore() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.store;
+    }
+
+    // ─── NEW: factory_user predicate ─────────────────────────────
+    function isFactoryUser() {
+      return isSignedIn() && userRole() in ['factory_user', 'admin', 'super_admin'];
+    }
+
+    // ── Users ───────────────────────────────────────────────────────
+    match /users/{uid} {
+      allow read: if isSignedIn();
+      allow create: if isSuperAdmin();
+      allow update: if isSignedIn() && (request.auth.uid == uid || isAdmin());
+      allow delete: if isSuperAdmin();
+    }
+
+    // ── Store Inventory Lists ───────────────────────────────────────
+    match /storeInventories/{listId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && (
+        isAdmin() ||
+        request.resource.data.storeName == userStore()
+      );
+      allow update: if isSignedIn() && (
+        isAdmin() ||
+        resource.data.storeName == userStore()
+      );
+      allow delete: if isSignedIn() && (
+        isAdmin() ||
+        resource.data.storeName == userStore()
+      );
+    }
+
+    // ── App-wide data (products, overrides, finishes) ───────────────
+    match /appData/{docId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // ── Custom Products ─────────────────────────────────────────────
+    // factory_user can read (needed for the matcher) and bump usageCount.
+    // Admins can create/update/delete freely.
+    match /customProducts/{productId} {
+      allow read: if isSignedIn();
+      allow create: if isAdmin() || isFactoryUser();
+      allow update: if isAdmin() || isFactoryUser();
+      allow delete: if isAdmin();
+    }
+
+    // ── Finish Overrides ────────────────────────────────────────────
+    match /finishOverrides/{finishId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // ── Product Status Overrides ────────────────────────────────────
+    match /productStatusOverrides/{productId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // ── NEW: Orders (factory) ───────────────────────────────────────
+    // Sales reps + admins can CREATE orders (sending to factory).
+    // factory_user + admins can READ + UPDATE (status changes).
+    // Only admins can DELETE.
+    match /orders/{orderId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();  // any logged-in user can submit an order to the factory
+      allow update: if isFactoryUser();
+      allow delete: if isAdmin();
+    }
+
+    // ── NEW: Order Items (one per label) ────────────────────────────
+    // factory_user can CRUD items in their work (printing, scan log, status).
+    // Read open to all signed-in (for cross-team visibility).
+    match /orderItems/{itemId} {
+      allow read: if isSignedIn();
+      allow create: if isFactoryUser();
+      allow update: if isFactoryUser();
+      allow delete: if isAdmin();
+    }
+
+    // ── Audit Log (write-only for app, read for admins) ────────────
+    match /auditLog/{entry} {
+      allow read: if isAdmin();
+      allow create: if isSignedIn();
+      allow update, delete: if false;
+    }
+
+  }
+}

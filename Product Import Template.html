@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Tidelli — Product Import Template</title>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: oklch(97.5% 0.008 60);
+      min-height: 100vh;
+      display: flex; align-items: center; justify-content: center;
+      padding: 40px 20px;
+    }
+    .card {
+      background: white;
+      border: 1px solid oklch(91% 0.012 60);
+      border-radius: 18px;
+      padding: 48px 52px;
+      max-width: 680px;
+      width: 100%;
+      box-shadow: 0 4px 32px rgba(0,0,0,0.06);
+    }
+    .logo-row {
+      display: flex; align-items: center; gap: 12; margin-bottom: 36px;
+    }
+    .logo-mark {
+      width: 36px; height: 36px; border-radius: 8px;
+      background: oklch(65% 0.10 45);
+      color: white; font-family: 'Cormorant Garamond', serif;
+      font-size: 20px; font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .logo-text { display: flex; flex-direction: column; gap: 1px; }
+    .logo-main { font-family: 'Cormorant Garamond', serif; font-size: 15px; font-weight: 700; letter-spacing: 0.12em; color: oklch(22% 0.03 55); }
+    .logo-sub { font-family: 'DM Sans', sans-serif; font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase; color: oklch(60% 0.03 55); }
+    h1 {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 32px; font-weight: 600;
+      color: oklch(22% 0.03 55);
+      letter-spacing: -0.01em;
+      margin-bottom: 10px;
+    }
+    .subtitle {
+      font-size: 14px; color: oklch(52% 0.03 55);
+      line-height: 1.65; margin-bottom: 36px;
+    }
+    .columns-section { margin-bottom: 32px; }
+    .columns-label {
+      font-size: 11px; font-weight: 600; letter-spacing: 0.10em;
+      text-transform: uppercase; color: oklch(58% 0.04 55);
+      margin-bottom: 14px;
+    }
+    .columns-grid {
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: 6px 20px;
+    }
+    .col-chip {
+      display: flex; align-items: center; gap: 8px;
+      padding: 6px 0; border-bottom: 1px solid oklch(95% 0.006 60);
+      font-size: 12px; color: oklch(38% 0.04 55);
+    }
+    .col-chip .dot {
+      width: 5px; height: 5px; border-radius: 50%;
+      background: oklch(65% 0.10 45); flex-shrink: 0;
+    }
+    .col-chip.material .dot { background: oklch(52% 0.08 200); }
+    .col-chip code {
+      font-family: 'Courier New', monospace; font-size: 11.5px;
+      color: oklch(42% 0.06 45);
+    }
+    .divider {
+      height: 1px; background: oklch(92% 0.010 60);
+      margin: 24px 0;
+    }
+    .section-tag {
+      font-size: 10px; font-weight: 600; letter-spacing: 0.08em;
+      text-transform: uppercase; color: oklch(62% 0.06 200);
+      background: oklch(95% 0.015 200);
+      border-radius: 20px; padding: 3px 10px;
+      display: inline-block; margin-bottom: 10px;
+    }
+    .section-tag.product { color: oklch(45% 0.10 45); background: oklch(95% 0.015 55); }
+    .download-btn {
+      display: flex; align-items: center; justify-content: center; gap: 10px;
+      width: 100%; padding: 15px 24px;
+      background: oklch(45% 0.10 45); color: white;
+      border: none; border-radius: 10px; cursor: pointer;
+      font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 600;
+      letter-spacing: 0.02em; transition: opacity 0.15s;
+      margin-top: 32px;
+    }
+    .download-btn:hover { opacity: 0.88; }
+    .download-btn svg { flex-shrink: 0; }
+    .note {
+      font-size: 11.5px; color: oklch(62% 0.03 55);
+      text-align: center; margin-top: 14px; line-height: 1.55;
+    }
+    .note a { color: oklch(45% 0.10 45); text-decoration: none; }
+  </style>
+</head>
+<body>
+<div class="card">
+  <!-- Logo -->
+  <div class="logo-row" style="display:flex;align-items:center;gap:12px;margin-bottom:36px;">
+    <div class="logo-mark">T</div>
+    <div class="logo-text">
+      <span class="logo-main">TIDELLI</span>
+      <span class="logo-sub">Product Hub</span>
+    </div>
+  </div>
+
+  <h1>Product Import Template</h1>
+  <p class="subtitle">
+    Download the Excel template below, fill in your products, then upload the file
+    using the <strong>Add Product → Import from Excel</strong> button in the catalog.
+  </p>
+
+  <!-- Product fields -->
+  <div class="columns-section">
+    <div class="section-tag product">Product Fields</div>
+    <div class="columns-grid">
+      <div class="col-chip"><span class="dot"></span><code>product_id</code></div>
+      <div class="col-chip"><span class="dot"></span><code>sku</code></div>
+      <div class="col-chip"><span class="dot"></span><code>name_pt</code></div>
+      <div class="col-chip"><span class="dot"></span><code>name_en</code></div>
+      <div class="col-chip"><span class="dot"></span><code>category_EN</code></div>
+      <div class="col-chip"><span class="dot"></span><code>price_usd_wholesale</code></div>
+      <div class="col-chip"><span class="dot"></span><code>price_usd_retail</code></div>
+      <div class="col-chip"><span class="dot"></span><code>fabric_meters_required</code></div>
+      <div class="col-chip"><span class="dot"></span><code>upholstery_meters_required</code></div>
+      <div class="col-chip"><span class="dot"></span><code>fabric_code_referenced</code></div>
+      <div class="col-chip"><span class="dot"></span><code>dimensions_raw</code></div>
+      <div class="col-chip"><span class="dot"></span><code>width_cm</code></div>
+      <div class="col-chip"><span class="dot"></span><code>depth_cm</code></div>
+      <div class="col-chip"><span class="dot"></span><code>height_cm</code></div>
+      <div class="col-chip"><span class="dot"></span><code>diameter_cm</code></div>
+      <div class="col-chip"><span class="dot"></span><code>notes_pt</code></div>
+      <div class="col-chip"><span class="dot"></span><code>notes_en</code></div>
+      <div class="col-chip"><span class="dot"></span><code>image_URL</code></div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- Material columns -->
+  <div class="columns-section">
+    <div class="section-tag">Material Columns <span style="font-weight:400;opacity:0.7">(0 = not used · 1, 2, 3… = quantity)</span></div>
+    <div class="columns-grid">
+      <div class="col-chip material"><span class="dot"></span><code>HPL</code></div>
+      <div class="col-chip material"><span class="dot"></span><code>Aluminum</code></div>
+      <div class="col-chip material"><span class="dot"></span><code>Concrete</code></div>
+      <div class="col-chip material"><span class="dot"></span><code>Fabric</code></div>
+      <div class="col-chip material"><span class="dot"></span><code>Fiber</code></div>
+      <div class="col-chip material"><span class="dot"></span><code>Porcelain</code></div>
+      <div class="col-chip material"><span class="dot"></span><code>PVC</code></div>
+      <div class="col-chip material"><span class="dot"></span><code>Rope</code></div>
+      <div class="col-chip material"><span class="dot"></span><code>Sling</code></div>
+      <div class="col-chip material"><span class="dot"></span><code>Stone</code></div>
+      <div class="col-chip material"><span class="dot"></span><code>Ceramic</code></div>
+      <div class="col-chip material"><span class="dot"></span><code>Wood</code></div>
+      <div class="col-chip material"><span class="dot"></span><code>Pentagramma</code></div>
+    </div>
+  </div>
+
+  <button class="download-btn" onclick="generateTemplate()">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+      <path d="M8 1v9M4 7l4 4 4-4M2 13h12" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    Download Excel Template (.xlsx)
+  </button>
+  <p class="note">Opens in Microsoft Excel, Numbers, or Google Sheets.<br/>Material columns: use <strong>0</strong> if not applicable, or a positive number for the quantity used (e.g. 2 fabrics → 2).</p>
+</div>
+
+<script>
+function generateTemplate() {
+  const XLSX = window.XLSX;
+
+  const headers = [
+    'product_id', 'sku', 'name_pt', 'name_en', 'category_EN',
+    'price_usd_wholesale', 'price_usd_retail',
+    'fabric_meters_required', 'upholstery_meters_required', 'fabric_code_referenced',
+    'dimensions_raw', 'width_cm', 'depth_cm', 'height_cm', 'diameter_cm',
+    'notes_pt', 'notes_en', 'image_URL',
+    'HPL', 'Aluminum', 'Concrete', 'Fabric', 'Fiber', 'Porcelain',
+    'PVC', 'Rope', 'Sling', 'Stone', 'Ceramic', 'Wood', 'Pentagramma'
+  ];
+
+  const examples = [
+    [
+      '001', '6316', 'POLTRONA BALANÇO', 'Amado Rocking Chair', 'chair',
+      1250, 2100,
+      '', '', '',
+      'W 71 × D 97 × H 94', 71, 97, 94, '',
+      'Poltrona com estrutura em alumínio e corda.', 'Rocking chair with aluminum frame and rope.', '',
+      0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0
+    ],
+    [
+      '002', '7210', 'SOFÁ BALI', 'Bali Sofa', 'sofa',
+      3200, 5400,
+      2.5, 1.8, 'FAB-01',
+      'W 220 × D 90 × H 80', 220, 90, 80, '',
+      'Sofá com tecido e estrutura em alumínio.', 'Sofa with fabric and aluminum frame.',
+      1, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    ],
+    [
+      '003', '8401', 'MESA CANCUN', 'Cancun Dining Table', 'table',
+      4800, 8200,
+      '', '', '',
+      'Ø 140 × H 75', '', '', 75, 140,
+      'Mesa com tampo em pedra e base em alumínio.', 'Table with stone top and aluminum base.',
+      1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0
+    ]
+  ];
+
+  // Build worksheet data
+  const wsData = [headers, ...examples];
+  const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+  // Column widths
+  const colWidths = headers.map((h, i) => {
+    if (i === 0) return { wch: 12 }; // product_id
+    if (i === 1) return { wch: 10 }; // sku
+    if (h.startsWith('name')) return { wch: 28 };
+    if (h === 'dimensions_raw') return { wch: 26 };
+    if (h.startsWith('notes')) return { wch: 38 };
+    if (h === 'image_URL') return { wch: 40 };
+    if (['HPL','Aluminum','Concrete','Fabric','Fiber','Porcelain','PVC','Rope','Sling','Stone','Ceramic','Wood','Pentagramma'].includes(h)) return { wch: 13 };
+    return { wch: 18 };
+  });
+  ws['!cols'] = colWidths;
+
+  // Freeze top row
+  ws['!freeze'] = { xSplit: 0, ySplit: 1, topLeftCell: 'A2', activePane: 'bottomLeft' };
+
+  // Style header row cells
+  const range = XLSX.utils.decode_range(ws['!ref']);
+  for (let C = range.s.c; C <= range.e.c; C++) {
+    const cellAddr = XLSX.utils.encode_cell({ r: 0, c: C });
+    if (!ws[cellAddr]) continue;
+    ws[cellAddr].s = {
+      font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 10 },
+      fill: { fgColor: { rgb: C >= 17 ? '2A5A8A' : '7A5A30' } },
+      alignment: { wrapText: true, vertical: 'center' },
+      border: {
+        bottom: { style: 'medium', color: { rgb: 'FFFFFF' } },
+        right:  { style: 'thin',   color: { rgb: 'FFFFFF' } },
+      }
+    };
+  }
+
+  // Style example rows
+  for (let R = 1; R <= examples.length; R++) {
+    for (let C = range.s.c; C <= range.e.c; C++) {
+      const cellAddr = XLSX.utils.encode_cell({ r: R, c: C });
+      if (!ws[cellAddr]) ws[cellAddr] = { t: 's', v: '' };
+      ws[cellAddr].s = {
+        fill: { fgColor: { rgb: R % 2 === 0 ? 'F7F4F0' : 'FFFFFF' } },
+        font: { sz: 10, color: { rgb: '333333' } },
+        alignment: { vertical: 'center', wrapText: C >= 17 ? false : true },
+        border: {
+          bottom: { style: 'thin', color: { rgb: 'E0D8CF' } },
+          right:  { style: 'thin', color: { rgb: 'E0D8CF' } },
+        }
+      };
+    }
+  }
+
+  // Create workbook
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Products Import');
+
+  // Add a README sheet
+  const readmeData = [
+    ['TIDELLI PRODUCT HUB — Import Guide'],
+    [''],
+    ['How to use this template:'],
+    ['1. Fill in each row with one product per row.'],
+    ['2. Required: sku, name_en (or name_pt). All other fields are optional.'],
+    ['3. Material columns: use 0 if the material does not apply. Use a positive number for the quantity used (e.g. 2 fabrics → enter 2).'],
+    ['4. Dimensions: fill either dimensions_raw (e.g. "W 71 × D 97 × H 94") OR the individual cm columns.'],
+    ['5. Save as .xlsx or .csv and upload via Add Product → Import from Excel in the Product Catalog.'],
+    [''],
+    ['Category values (category_EN):'],
+    ['  chair, sofa, table, sunbed, accessory, other'],
+    [''],
+    ['Material columns:'],
+    ['  HPL, Aluminum, Concrete, Fabric, Fiber, Porcelain, PVC, Rope, Sling, Stone, Ceramic, Wood, Pentagramma'],
+  ];
+  const wsReadme = XLSX.utils.aoa_to_sheet(readmeData);
+  wsReadme['!cols'] = [{ wch: 80 }];
+  XLSX.utils.book_append_sheet(wb, wsReadme, 'Read Me');
+
+  // Download
+  XLSX.writeFile(wb, 'Tidelli_Product_Import_Template.xlsx');
+}
+</script>
+</body>
+</html>
