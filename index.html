@@ -30,7 +30,11 @@
 <body>
 <div id="root"></div>
 
-<!-- Firebase removed — app runs on localStorage + MOCK_DATA fallback -->
+<!-- Firebase removed — app runs on Supabase + localStorage fallback -->
+
+<!-- Supabase SDK + client -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="supabase-client.js"></script>
 
 <!-- Data layer -->
 <script src="data/tidelli-data.js"></script>
@@ -49,6 +53,7 @@
 <script type="text/babel" src="components/MaterialInventoryScreen.jsx"></script>
 <script type="text/babel" src="components/StoreManagementScreen.jsx"></script>
 <script type="text/babel" src="components/StoreInventoryScreen.jsx"></script>
+<script type="text/babel" src="components/InventoryBatchUpload.jsx"></script>
 <!-- Image slots -->
 <script src="image-slot.js"></script>
 <!-- Tweaks panel -->
@@ -102,79 +107,81 @@ const App = () => {
     }
   }, []);
 
-  // ── Firebase connection status ───────────────────────────────────
-  const [fbStatus, setFbStatus] = React.useState('checking'); // 'checking' | 'connected' | 'offline'
+  // ── Supabase connection status ───────────────────────────────────
+  const [fbStatus, setFbStatus] = React.useState(window.SB_ENABLED ? 'connected' : 'offline');
+
+  // ── Supabase auth: restore session + listen for changes ──────────
+  const resolveProfile = React.useCallback(async (authUser) => {
+    // 1) profiles table  2) MOCK_DATA by email  3) sensible default
+    let profile = await (window.SB ? window.SB.loadProfile(authUser.id) : null);
+    if (!profile) {
+      const byEmail = MOCK_DATA.users.find(
+        (u) => u.email.toLowerCase() === (authUser.email || '').toLowerCase()
+      );
+      profile = byEmail || {
+        id: authUser.id,
+        name: authUser.email,
+        email: authUser.email,
+        role: 'store_user',
+        store: 'Unknown',
+        avatar: (authUser.email || 'U')[0].toUpperCase(),
+      };
+    }
+    return profile;
+  }, []);
 
   React.useEffect(() => {
-    if (!window.db) { setFbStatus('offline'); return; }
-    // Try enabling network first, then ping with a known public collection
-    window.db.enableNetwork()
-      .then(() => window.db.collection('storeInventories').limit(1).get())
-      .then(() => setFbStatus('connected'))
-      .catch((err) => {
-        // Permission denied means Firebase IS reachable — rules just block anonymous reads
-        if (err.code === 'permission-denied' || err.code === 'unauthenticated') {
-          setFbStatus('connected');
-        } else {
-          setFbStatus('offline');
-        }
-      });
-  }, []);
-  React.useEffect(() => {
-    if (!window.fbAuth) { setAuthChecked(true); return; }
-    const unsub = window.fbAuth.onAuthStateChanged(async (firebaseUser) => {
-      if (firebaseUser) {
-        // Try to load user profile from Firestore
-        let profile = null;
-        try {
-          const doc = await window.db.collection('users').doc(firebaseUser.uid).get();
-          if (doc.exists) profile = doc.data();
-        } catch {}
-        // Fall back to MOCK_DATA lookup by email
-        if (!profile) {
-          profile = MOCK_DATA.users.find(u => u.email === firebaseUser.email) || {
-            id: firebaseUser.uid,
-            name: firebaseUser.displayName || firebaseUser.email,
-            email: firebaseUser.email,
-            role: 'store_user',
-            store: 'Unknown',
-            avatar: (firebaseUser.email || 'U')[0].toUpperCase(),
-          };
-        }
+    if (!window.SB_ENABLED) { setAuthChecked(true); return; }
+    let active = true;
+
+    // Restore an existing session on load
+    window.SB.getSession().then(async (session) => {
+      if (!active) return;
+      if (session && session.user) {
+        const profile = await resolveProfile(session.user);
+        if (!active) return;
         setCurrentUser(profile);
         setCurrentRole(profile.role || 'store_user');
         setLoggedIn(true);
-      } else {
-        setCurrentUser(null);
-        setLoggedIn(false);
       }
       setAuthChecked(true);
     });
-    return () => unsub();
+
+    // React to sign-in / token refresh. We only LOG IN on a present session;
+    // sign-out is handled by handleLogout so demo logins aren't clobbered.
+    const { data: sub } = window.SB.onAuthChange(async (session, event) => {
+      if (session && session.user && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED')) {
+        const profile = await resolveProfile(session.user);
+        if (!active) return;
+        setCurrentUser(profile);
+        setCurrentRole(profile.role || 'store_user');
+        setLoggedIn(true);
+      }
+    });
+
+    return () => { active = false; sub && sub.subscription && sub.subscription.unsubscribe(); };
+  }, [resolveProfile]);
+
+  // ── Supabase realtime: store inventory lists ────────────────────
+  React.useEffect(() => {
+    if (!window.SB_ENABLED) return;
+    let active = true;
+    const refresh = async () => {
+      const lists = await window.SB.listsGetAll();
+      if (active && lists) {
+        setInventories(lists);
+        try { localStorage.setItem('storeInventories', JSON.stringify(lists)); } catch {}
+      }
+    };
+    refresh();
+    const unsub = window.SB.subscribeLists(refresh);
+    return () => { active = false; unsub && unsub(); };
   }, []);
 
-  // ── Firestore real-time listener: store inventories ─────────────
-  React.useEffect(() => {
-    if (!window.db) return;
-    const unsub = window.db.collection('storeInventories')
-      .orderBy('updatedAt', 'desc')
-      .onSnapshot(snap => {
-        const lists = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        setInventories(lists);
-        // Also cache locally
-        try { localStorage.setItem('storeInventories', JSON.stringify(lists)); } catch {}
-      }, () => {
-        // Firestore unavailable — fall back to localStorage
-      });
-    return () => unsub();
-  }, []);
-  // Finishes as React state — the single source of truth for qty/stock across all screens
-  // Merges base data with persisted overrides and any custom-added finishes
-  const [finishes, setFinishes] = React.useState(() => {
+  // ── Compute merged finishes from base + persisted overrides ──────
+  const computeFinishes = React.useCallback(() => {
     const base = MOCK_DATA.finishes.map(f => ({ ...f }));
-    let overrides = {};
-    let custom = [];
-    let deleted = [];
+    let overrides = {}, custom = [], deleted = [];
     try { overrides = JSON.parse(localStorage.getItem('finishOverrides') || '{}'); } catch {}
     try { custom = JSON.parse(localStorage.getItem('customFinishes') || '[]'); } catch {}
     try { deleted = JSON.parse(localStorage.getItem('deletedFinishIds') || '[]'); } catch {}
@@ -184,7 +191,35 @@ const App = () => {
       .map(f => overrides[f.id] ? { ...f, ...overrides[f.id] } : f);
     const customKept = custom.filter(f => !deletedSet.has(f.id));
     return [...merged, ...customKept];
-  });
+  }, []);
+
+  // Finishes — the single source of truth for qty/stock across all screens
+  const [finishes, setFinishes] = React.useState(computeFinishes);
+
+  // ── Rehydrate finish data from Supabase kv_store on load ─────────
+  React.useEffect(() => {
+    if (!window.SB_ENABLED) return;
+    let active = true;
+    (async () => {
+      const kv = await window.SB.kvGetAll();
+      if (!active || !kv) return;
+      const keys = ['finishOverrides', 'customFinishes', 'deletedFinishIds'];
+      let touched = false;
+      window.SB._restoring = true; // don't echo these writes back to the cloud
+      keys.forEach((k) => {
+        if (kv[k] !== undefined) {
+          try { localStorage.setItem(k, JSON.stringify(kv[k])); touched = true; } catch {}
+        }
+      });
+      window.SB._restoring = false;
+      if (touched) {
+        const next = computeFinishes();
+        MOCK_DATA.finishes = next;
+        setFinishes(next);
+      }
+    })();
+    return () => { active = false; };
+  }, [computeFinishes]);
 
   // Called by MaterialInventoryScreen on save — updates state, persists, and syncs MOCK_DATA
   const handleUpdateFinish = React.useCallback((id, updates) => {
@@ -281,12 +316,10 @@ const App = () => {
   });
 
   const handleSaveInventoryList = React.useCallback((list) => {
-    if (window.db) {
-      const { id, ...data } = list;
-      window.db.collection('storeInventories').doc(id).set(data)
-        .catch(() => {});
+    if (window.SB_ENABLED) {
+      window.SB.listUpsert(list); // realtime subscription will confirm
     }
-    // Optimistic local update (Firestore onSnapshot will confirm)
+    // Optimistic local update
     setInventories(prev => {
       const idx = prev.findIndex(l => l.id === list.id);
       const next = idx >= 0 ? prev.map(l => l.id === list.id ? list : l) : [...prev, list];
@@ -296,8 +329,8 @@ const App = () => {
   }, []);
 
   const handleDeleteInventoryList = React.useCallback((id) => {
-    if (window.db) {
-      window.db.collection('storeInventories').doc(id).delete().catch(() => {});
+    if (window.SB_ENABLED) {
+      window.SB.listDelete(id);
     }
     setInventories(prev => {
       const next = prev.filter(l => l.id !== id);
@@ -384,7 +417,7 @@ const App = () => {
   };
 
   const handleLogout = () => {
-    if (window.fbAuth) window.fbAuth.signOut().catch(() => {});
+    if (window.SB_ENABLED) window.SB.signOut();
     setLoggedIn(false);
     setCurrentUser(null);
     setCurrentScreen('dashboard');
